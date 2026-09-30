@@ -22,22 +22,39 @@
       </section>
 
       <section id="signup-container">
-        <h3>Sign Up for an Activity</h3>
-        <form id="signup-form">
+        <h3>Account access</h3>
+        <form id="login-form">
           <div class="form-group">
-            <label for="email">Student Email:</label>
-            <input type="email" id="email" required placeholder="your-email@mergington.edu" />
+            <label for="login-email">School email</label>
+            <input type="email" id="login-email" autocomplete="username" required />
           </div>
           <div class="form-group">
-            <label for="activity">Select Activity:</label>
-            <select id="activity" required>
-              <option value="">-- Select an activity --</option>
-              <!-- Activity options will be loaded here -->
-            </select>
+            <label for="login-password">Password</label>
+            <input type="password" id="login-password" autocomplete="current-password" required />
           </div>
-          <button type="submit">Sign Up</button>
+          <button type="submit">Sign in</button>
         </form>
-        <div id="message" class="hidden"></div>
+        <p id="auth-status" class="hidden"></p>
+        <button type="button" id="logout-button" class="hidden">Sign out</button>
+
+        <div id="signup-controls" class="hidden">
+          <h3>Sign Up for an Activity</h3>
+          <form id="signup-form">
+            <div id="admin-email-group" class="form-group hidden">
+              <label for="admin-email">Student email (admin only)</label>
+              <input type="email" id="admin-email" />
+            </div>
+            <div class="form-group">
+              <label for="activity">Select Activity:</label>
+              <select id="activity" required>
+                <option value="">-- Select an activity --</option>
+                <!-- Activity options will be loaded here -->
+              </select>
+            </div>
+            <button type="submit">Sign Up</button>
+          </form>
+          <div id="message" class="hidden"></div>
+        </div>
       </section>
     </main>
 

@@ -1,8 +1,48 @@
 document.addEventListener("DOMContentLoaded", () => {
   const activitiesList = document.getElementById("activities-list");
   const activitySelect = document.getElementById("activity");
+  const loginForm = document.getElementById("login-form");
+  const loginEmail = document.getElementById("login-email");
+  const loginPassword = document.getElementById("login-password");
+  const authStatus = document.getElementById("auth-status");
+  const logoutButton = document.getElementById("logout-button");
+  const signupControls = document.getElementById("signup-controls");
+  const adminEmailGroup = document.getElementById("admin-email-group");
+  const adminEmail = document.getElementById("admin-email");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  let credentials = null;
+  let currentUser = null;
+
+  function authorizationHeader(userCredentials = credentials) {
+    if (!userCredentials) {
+      return {};
+    }
+    const bytes = new TextEncoder().encode(`${userCredentials.email}:${userCredentials.password}`);
+    const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+    return { Authorization: `Basic ${btoa(binary)}` };
+  }
+
+  function updateAuthView() {
+    const isSignedIn = currentUser !== null;
+    authStatus.className = "";
+    loginForm.classList.toggle("hidden", isSignedIn);
+    authStatus.classList.toggle("hidden", !isSignedIn);
+    logoutButton.classList.toggle("hidden", !isSignedIn);
+    signupControls.classList.toggle("hidden", !isSignedIn);
+    adminEmailGroup.classList.toggle("hidden", !isSignedIn || currentUser.role !== "admin");
+    adminEmail.required = isSignedIn && currentUser.role === "admin";
+    if (isSignedIn) {
+      authStatus.textContent = `Signed in as ${currentUser.email} (${currentUser.role})`;
+    }
+  }
+
+  function showMessage(text, isError) {
+    messageDiv.textContent = text;
+    messageDiv.className = isError ? "error" : "success";
+    messageDiv.classList.remove("hidden");
+    setTimeout(() => messageDiv.classList.add("hidden"), 5000);
+  }
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -12,6 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      activitySelect.querySelectorAll("option:not(:first-child)").forEach((option) => option.remove());
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -28,10 +69,14 @@ document.addEventListener("DOMContentLoaded", () => {
               <h5>Participants:</h5>
               <ul class="participants-list">
                 ${details.participants
-                  .map(
-                    (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
-                  )
+                  .map((email) => {
+                    const canUnregister = currentUser &&
+                      (currentUser.role === "admin" || currentUser.email === email.toLowerCase());
+                    const action = canUnregister
+                      ? `<button class="delete-btn" data-activity="${name}" data-email="${email}">Remove</button>`
+                      : "";
+                    return `<li><span class="participant-email">${email}</span>${action}</li>`;
+                  })
                   .join("")}
               </ul>
             </div>`
@@ -80,81 +125,98 @@ document.addEventListener("DOMContentLoaded", () => {
         )}/unregister?email=${encodeURIComponent(email)}`,
         {
           method: "DELETE",
+          headers: authorizationHeader(),
         }
       );
 
       const result = await response.json();
 
       if (response.ok) {
-        messageDiv.textContent = result.message;
-        messageDiv.className = "success";
+        showMessage(result.message, false);
 
         // Refresh activities list to show updated participants
         fetchActivities();
       } else {
-        messageDiv.textContent = result.detail || "An error occurred";
-        messageDiv.className = "error";
+        showMessage(result.detail || "An error occurred", true);
       }
-
-      messageDiv.classList.remove("hidden");
-
-      // Hide message after 5 seconds
-      setTimeout(() => {
-        messageDiv.classList.add("hidden");
-      }, 5000);
     } catch (error) {
-      messageDiv.textContent = "Failed to unregister. Please try again.";
-      messageDiv.className = "error";
-      messageDiv.classList.remove("hidden");
+      showMessage("Failed to unregister. Please try again.", true);
       console.error("Error unregistering:", error);
     }
   }
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const attemptedCredentials = {
+      email: loginEmail.value.trim(),
+      password: loginPassword.value,
+    };
+
+    try {
+      const response = await fetch("/auth/me", {
+        headers: authorizationHeader(attemptedCredentials),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.detail || "Sign in failed");
+      }
+
+      credentials = attemptedCredentials;
+      currentUser = result;
+      loginForm.reset();
+      updateAuthView();
+      fetchActivities();
+    } catch (error) {
+      authStatus.textContent = error.message;
+      authStatus.className = "error";
+      console.error("Error signing in:", error);
+    }
+  });
+
+  logoutButton.addEventListener("click", () => {
+    credentials = null;
+    currentUser = null;
+    updateAuthView();
+    fetchActivities();
+  });
 
   // Handle form submission
   signupForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    const email = document.getElementById("email").value;
     const activity = document.getElementById("activity").value;
+    const signupUrl = new URL(
+      `/activities/${encodeURIComponent(activity)}/signup`,
+      window.location.origin
+    );
+    if (currentUser.role === "admin") {
+      signupUrl.searchParams.set("email", adminEmail.value.trim());
+    }
 
     try {
-      const response = await fetch(
-        `/activities/${encodeURIComponent(
-          activity
-        )}/signup?email=${encodeURIComponent(email)}`,
-        {
-          method: "POST",
-        }
-      );
+      const response = await fetch(signupUrl, {
+        method: "POST",
+        headers: authorizationHeader(),
+      });
 
       const result = await response.json();
 
       if (response.ok) {
-        messageDiv.textContent = result.message;
-        messageDiv.className = "success";
+        showMessage(result.message, false);
         signupForm.reset();
 
         // Refresh activities list to show updated participants
         fetchActivities();
       } else {
-        messageDiv.textContent = result.detail || "An error occurred";
-        messageDiv.className = "error";
+        showMessage(result.detail || "An error occurred", true);
       }
-
-      messageDiv.classList.remove("hidden");
-
-      // Hide message after 5 seconds
-      setTimeout(() => {
-        messageDiv.classList.add("hidden");
-      }, 5000);
     } catch (error) {
-      messageDiv.textContent = "Failed to sign up. Please try again.";
-      messageDiv.className = "error";
-      messageDiv.classList.remove("hidden");
+      showMessage("Failed to sign up. Please try again.", true);
       console.error("Error signing up:", error);
     }
   });
 
   // Initialize app
+  updateAuthView();
   fetchActivities();
 });
